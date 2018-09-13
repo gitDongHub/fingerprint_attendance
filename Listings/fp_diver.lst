@@ -1,0 +1,338 @@
+C51 COMPILER V9.56.0.0   FP_DIVER                                                          06/30/2017 23:09:46 PAGE 1   
+
+
+C51 COMPILER V9.56.0.0, COMPILATION OF MODULE FP_DIVER
+OBJECT MODULE PLACED IN .\Objects\fp_diver.obj
+COMPILER INVOKED BY: E:\Keil_v5\C51\BIN\C51.EXE Source\fp_diver.c OPTIMIZE(9,SPEED) BROWSE INCDIR(.\Include;E:\Keil_v5\C
+                    -51\INC\STC) DEBUG OBJECTEXTEND PRINT(.\Listings\fp_diver.lst) TABS(2) OBJECT(.\Objects\fp_diver.obj)
+
+line level    source
+
+   1          #include "uart.h"
+   2          #include "fp_diver.h"
+   3          
+   4          /*------------------ fp_diver函数定义 --------------------------*/
+   5          /*************************一级函数******************************/
+   6          //FINGERPRINT_获得指纹图像命令
+   7          void FP_Cmd_Get_Img(void)
+   8          {
+   9   1          unsigned char i;
+  10   1      
+  11   1          for(i=0;i<6;i++) //发送包头
+  12   1             UART2_Send_Byte(FP_Pack_Head[i]);
+  13   1          
+  14   1          for(i=0;i<6;i++) //发送命令 0x1d
+  15   1             UART2_Send_Byte(FP_Get_Img[i]);
+  16   1      }
+  17          
+  18          //讲图像转换成特征码存放在Buffer1中
+  19          void FP_Cmd_Img_To_Buffer1(void)
+  20          {
+  21   1        unsigned char i;
+  22   1        
+  23   1          for(i=0;i<6;i++)    //发送包头
+  24   1              UART2_Send_Byte(FP_Pack_Head[i]);   
+  25   1         
+  26   1        for(i=0;i<7;i++)   //发送命令 将图像转换成 特征码 存放在 CHAR_buffer1
+  27   1          UART2_Send_Byte(FP_Img_To_Buffer1[i]);
+  28   1      }
+  29          
+  30          //将图像转换成特征码存放在Buffer2中
+  31          void FP_Cmd_Img_To_Buffer2(void)
+  32          {
+  33   1          unsigned char i;
+  34   1          for(i=0;i<6;i++)    //发送包头
+  35   1          {
+  36   2             UART2_Send_Byte(FP_Pack_Head[i]);   
+  37   2        }
+  38   1        for(i=0;i<7;i++)   //发送命令 将图像转换成 特征码 存放在 CHAR_buffer1
+  39   1          {
+  40   2          UART2_Send_Byte(FP_Img_To_Buffer2[i]);
+  41   2        }
+  42   1      }
+  43          
+  44          //将BUFFER1 跟 BUFFER2 中的特征码合并成指纹模版
+  45          void FP_Cmd_Reg_Model(void)
+  46          {
+  47   1          unsigned char i;    
+  48   1      
+  49   1          for(i=0;i<6;i++) //包头
+  50   1          {
+  51   2            UART2_Send_Byte(FP_Pack_Head[i]);   
+  52   2          }
+  53   1      
+  54   1          for(i=0;i<6;i++) //命令合并指纹模版
+C51 COMPILER V9.56.0.0   FP_DIVER                                                          06/30/2017 23:09:46 PAGE 2   
+
+  55   1          {
+  56   2            UART2_Send_Byte(FP_Reg_Model[i]);   
+  57   2          }
+  58   1      
+  59   1      }
+  60          
+  61          //删除指纹模块里的所有指纹模版
+  62          void FP_Cmd_Delete_All_Model(void)
+  63          {
+  64   1          unsigned char i;    
+  65   1      
+  66   1          for(i=0;i<6;i++) //包头
+  67   1            UART2_Send_Byte(FP_Pack_Head[i]);   
+  68   1      
+  69   1          for(i=0;i<6;i++) //命令合并指纹模版
+  70   1            UART2_Send_Byte(FP_Delet_All_Model[i]);
+  71   1      
+  72   1          FP_Recevice_Data(12);   
+  73   1      }
+  74          
+  75          /**************************二级函数*****************************/
+  76          //删除指纹模块里的指定指纹模版
+  77          void FP_Cmd_Delete_Model(unsigned int uiID_temp)
+  78          {
+  79   1          volatile unsigned int uiSum_temp = 0;
+  80   1        unsigned char i;    
+  81   1         
+  82   1        FP_Delete_Model[4]=(uiID_temp&0xFF00)>>8;
+  83   1        FP_Delete_Model[5]=(uiID_temp&0x00FF);
+  84   1        
+  85   1        for(i=0;i<8;i++)
+  86   1            uiSum_temp = uiSum_temp + FP_Delete_Model[i];
+  87   1            
+  88   1        FP_Delete_Model[8]=(uiSum_temp&0xFF00)>>8;
+  89   1        FP_Delete_Model[9]=uiSum_temp&0x00FF;
+  90   1         
+  91   1          for(i=0;i<6;i++)          //包头
+  92   1            UART2_Send_Byte(FP_Pack_Head[i]);   
+  93   1      
+  94   1          for(i=0;i<10;i++)           //命令合并指纹模版
+  95   1            UART2_Send_Byte(FP_Delete_Model[i]);   
+  96   1          FP_Recevice_Data(12);
+  97   1      }
+  98          //获得指纹模板数量
+  99          unsigned int FP_Get_Templete_Num(void)
+ 100          {  
+ 101   1        unsigned int i,num;
+ 102   1          unsigned char numH;
+ 103   1          unsigned char numL;
+ 104   1      
+ 105   1          for(i=0;i<6;i++)          //包头
+ 106   1              UART2_Send_Byte(FP_Pack_Head[i]);   
+ 107   1          for(i=0;i<6;i++)          //发送命令 0x1d
+ 108   1          UART2_Send_Byte(FP_Templete_Num[i]);
+ 109   1        FP_Recevice_Data(12);
+ 110   1        numH = UART2_FP_RECEVICE_BUFFER[10];
+ 111   1        numL = UART2_FP_RECEVICE_BUFFER[11];
+ 112   1      
+ 113   1        num = numH *100000000  + numL;
+ 114   1        return num;
+ 115   1      }
+ 116          //读索引表
+C51 COMPILER V9.56.0.0   FP_DIVER                                                          06/30/2017 23:09:46 PAGE 3   
+
+ 117          unsigned char* FP_Get_ReadIndexTable(unsigned char PageNum)
+ 118          {
+ 119   1        unsigned char i;
+ 120   1        unsigned char* pTable;
+ 121   1        pTable = Table;
+ 122   1        for(i=0;i<6;i++)
+ 123   1          UART2_Send_Byte(FP_Pack_Head[i]);
+ 124   1        if(PageNum == 0)
+ 125   1        {
+ 126   2          for(i=0;i<7;i++)
+ 127   2            UART2_Send_Byte(FP_Read_0_Table[i]);
+ 128   2        }
+ 129   1        if(PageNum == 1)
+ 130   1        {
+ 131   2          for(i=0;i<7;i++)
+ 132   2            UART2_Send_Byte(FP_Read_1_Table[i]);
+ 133   2        }
+ 134   1        for(i=0;i<10;i++)
+ 135   1          UART2_FP_RECEVICE_BUFFER[i] = UART2_Receive_Byte();
+ 136   1        for(i=0;i<32;i++)
+ 137   1          Table[i] = UART2_Receive_Byte();
+ 138   1        UART2_FP_RECEVICE_BUFFER[10] = UART2_Receive_Byte();
+ 139   1        UART2_FP_RECEVICE_BUFFER[11] = UART2_Receive_Byte();
+ 140   1      
+ 141   1        return pTable;
+ 142   1      }
+ 143          
+ 144          //搜索全部用户300枚
+ 145          void FP_Cmd_Search_Finger(void)
+ 146          {
+ 147   1        unsigned char i;     
+ 148   1        for(i=0;i<6;i++)          //发送命令搜索用户指纹库
+ 149   1          {
+ 150   2              UART2_Send_Byte(FP_Pack_Head[i]);   
+ 151   2        }
+ 152   1      
+ 153   1        for(i=0;i<11;i++)
+ 154   1        {
+ 155   2            UART2_Send_Byte(FP_Search[i]);   
+ 156   2        }
+ 157   1      }
+ 158          
+ 159          //载入管理员指纹模板
+ 160          void FP_Cmd_Load_Finger_Admin(void)
+ 161          {
+ 162   1         unsigned char i;    
+ 163   1         for(i=0;i<6;i++)           //发送命令载入管理员指纹库到charBufftter2
+ 164   1          {
+ 165   2            UART2_Send_Byte(FP_Pack_Head[i]);   
+ 166   2        }
+ 167   1      
+ 168   1         for(i=0;i<9;i++)
+ 169   1          {
+ 170   2            UART2_Send_Byte(FP_Load_Admin[i]);   
+ 171   2        }
+ 172   1      }
+ 173          
+ 174          //精确对比缓冲区里的两枚指纹
+ 175          void FP_cmd_Match_Finger(void)
+ 176          {
+ 177   1        unsigned char i;
+ 178   1        for(i=0;i<6;i++)
+C51 COMPILER V9.56.0.0   FP_DIVER                                                          06/30/2017 23:09:46 PAGE 4   
+
+ 179   1          UART2_Send_Byte(FP_Pack_Head[i]);
+ 180   1        for(i=0;i<6;i++)
+ 181   1          UART2_Send_Byte(FP_Match[i]);
+ 182   1      }
+ 183          
+ 184          //保存指纹模板
+ 185          void FP_Cmd_Save_Finger( unsigned char ucH_Char,unsigned char ucL_Char )
+ 186          {
+ 187   1         unsigned long temp = 0;
+ 188   1         unsigned char i;
+ 189   1      
+ 190   1         FP_Save_Finger[5] = ucH_Char;
+ 191   1         FP_Save_Finger[6] = ucL_Char;
+ 192   1         
+ 193   1         for(i=0;i<7;i++)   //计算校验和
+ 194   1             temp = temp + FP_Save_Finger[i];
+ 195   1            
+ 196   1         FP_Save_Finger[7]=(temp & 0x00FF00) >> 8;  //存放校验数据
+ 197   1         FP_Save_Finger[8]= temp & 0x0000FF;
+ 198   1         
+ 199   1         for(i=0;i<6;i++)    
+ 200   1             UART2_Send_Byte(FP_Pack_Head[i]);        //发送包头
+ 201   1      
+ 202   1         for(i=0;i<9;i++)  
+ 203   1          UART2_Send_Byte(FP_Save_Finger[i]);     //发送命令 将图像转换成 特征码 存放在 CHAR_buffe
+             -r1
+ 204   1      }
+ 205          
+ 206          //接收反馈数据缓冲
+ 207          void FP_Recevice_Data(unsigned char ucLength)
+ 208          {
+ 209   1        unsigned char i;
+ 210   1        for (i=0;i<ucLength;i++)
+ 211   1           UART2_FP_RECEVICE_BUFFER[i] = UART2_Receive_Byte();
+ 212   1      }
+ 213          
+ 214          //指纹添加新用户
+ 215          unsigned char FP_add_new_user(unsigned int user_ID)
+ 216          {
+ 217   1        unsigned char ucH_user;
+ 218   1        unsigned char ucL_user;
+ 219   1        ucH_user = (char)((user_ID >> 8) & 0xff);
+ 220   1        ucL_user = (char)(user_ID & 0xff);
+ 221   1          do {                       
+ 222   2              FP_Cmd_Get_Img();             //获得指纹图像
+ 223   2              FP_Recevice_Data(12);           //接收12个长度的反馈码
+ 224   2          }while ( UART2_FP_RECEVICE_BUFFER[9]!=0x00 );   //检测是否成功的按了指纹
+ 225   1      
+ 226   1           FP_Cmd_Img_To_Buffer1();           //将图像转换成特征码存放在Buffer1中
+ 227   1           FP_Recevice_Data(12);            //接收12个长度的反馈码
+ 228   1      
+ 229   1          do{ 
+ 230   2             FP_Cmd_Get_Img();            //获得指纹图像
+ 231   2             FP_Recevice_Data(12);          //接收12个长度的反馈码      
+ 232   2        }while( UART2_FP_RECEVICE_BUFFER[9]!=0x00 );
+ 233   1          
+ 234   1         FP_Cmd_Img_To_Buffer2();           //将图像转换成特征码存放在Buffer2中
+ 235   1           FP_Recevice_Data(12);            //接收12个长度的反馈码
+ 236   1      
+ 237   1         FP_Cmd_Reg_Model();            //转换成特征码
+ 238   1           FP_Recevice_Data(12); 
+ 239   1         
+C51 COMPILER V9.56.0.0   FP_DIVER                                                          06/30/2017 23:09:46 PAGE 5   
+
+ 240   1         FP_Cmd_Save_Finger(ucH_user,ucL_user);                            
+ 241   1           FP_Recevice_Data(12);
+ 242   1      
+ 243   1           return 0;
+ 244   1      }
+ 245          
+ 246          //用户指纹验证,验证成功，返回指纹对应用户的ID，验证失败，返回0
+ 247          unsigned int FP_User_Identity()
+ 248          {
+ 249   1        unsigned int user_ID;
+ 250   1        unsigned char user_IDL;
+ 251   1        unsigned char user_IDH;
+ 252   1        do
+ 253   1        {
+ 254   2          FP_Cmd_Get_Img();           //获得指纹图像
+ 255   2          FP_Recevice_Data(12);         //接收12个长度的反馈码
+ 256   2        }while( UART2_FP_RECEVICE_BUFFER[9]!=0x00 );//检测是否成功按了指纹
+ 257   1      
+ 258   1        FP_Cmd_Img_To_Buffer1();          //将图像转换成特征码存放在Buffer1中
+ 259   1        FP_Recevice_Data(12);           //接收12个长度的反馈码
+ 260   1      
+ 261   1        FP_Cmd_Search_Finger();           //搜索整个用户指纹库
+ 262   1        FP_Recevice_Data(12);           //接收12个长度的反馈码
+ 263   1      
+ 264   1        if( UART2_FP_RECEVICE_BUFFER[9] == 0x00)  //如果找到匹配的指纹
+ 265   1        {
+ 266   2          user_IDH = UART2_FP_RECEVICE_BUFFER[10];//将该指纹所在的编号高8位存入user_IDH中
+ 267   2          user_IDL = UART2_FP_RECEVICE_BUFFER[11];//将该指纹所在的编号低8位存入user_IDL中
+ 268   2      
+ 269   2          user_ID = user_IDH *100000000 + user_IDL;   
+ 270   2          return user_ID;             //返回16位的user_ID
+ 271   2        }
+ 272   1        else
+ 273   1        {
+ 274   2          return -1;                //如果找不到匹配的指纹，返回0
+ 275   2        }
+ 276   1      }
+ 277          
+ 278          //管理员指纹验证，验证成功返回1，失败返回0
+ 279          bit FP_Admin_Identity()
+ 280          {
+ 281   1        bit match = 0;                //匹配标志位
+ 282   1        do
+ 283   1        {
+ 284   2          FP_Cmd_Get_Img();           //获得指纹图像
+ 285   2          FP_Recevice_Data(12);         //接收12个长度的反馈码
+ 286   2        }while( UART2_FP_RECEVICE_BUFFER[9]!=0x00 );//检测是否成功按了指纹
+ 287   1      
+ 288   1        FP_Cmd_Img_To_Buffer1();          //将图像转换成特征码放在Buffer1中
+ 289   1        FP_Recevice_Data(12);           //接收12个长度的反馈码
+ 290   1      
+ 291   1        FP_Cmd_Load_Finger_Admin();         //载入管理员指纹到charbuffter2
+ 292   1        FP_Recevice_Data(12);           //接收12个长度的反馈码
+ 293   1        
+ 294   1        FP_cmd_Match_Finger();
+ 295   1        FP_Recevice_Data(14);
+ 296   1      
+ 297   1        if( UART2_FP_RECEVICE_BUFFER[9] == 0x00 ) //如果指纹匹配
+ 298   1        {
+ 299   2          match = 1;                //返回1
+ 300   2        }
+ 301   1        
+C51 COMPILER V9.56.0.0   FP_DIVER                                                          06/30/2017 23:09:46 PAGE 6   
+
+ 302   1        return match;
+ 303   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1006    ----
+   CONSTANT SIZE    =     84    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      29
+   IDATA SIZE       =     75    ----
+   BIT SIZE         =   ----       1
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

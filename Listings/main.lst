@@ -1,0 +1,1153 @@
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 1   
+
+
+C51 COMPILER V9.56.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: E:\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(9,SPEED) BROWSE INCDIR(.\Include;E:\Keil_v5\C51\INC\STC)
+                    - DEBUG OBJECTEXTEND PRINT(.\Listings\main.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <stc15.h>
+   2          #include "ds1302.h"
+   3          #include "oled.h"
+   4          #include "uart.h"
+   5          #include "fingerprint.h"
+   6          
+   7          #define FOSC 11059200L
+   8          
+   9          #define uchar unsigned char 
+  10          #define uint unsigned int
+  11          
+  12          #define const_voice_short  40  
+  13          #define const_led_long   120
+  14          #define const_key_time  40   
+  15          
+  16          sbit memu = P0^3;
+  17          sbit ret  = P0^6;
+  18          sbit left   = P0^4;
+  19          sbit right = P0^5;
+  20          
+  21          sbit touch = P0^7;
+  22          sbit beep = P3^2;
+  23          sbit red = P4^4;
+  24          sbit green = P4^1;
+  25          
+  26          uchar ucKeySec = 0;   //一些需要在不同函数之间使用的核心变量，只能用全局变量
+  27          uchar uiWrongCnt = 0;
+  28          uchar uiPassCnt = 0;
+  29          uchar WindowSec = 1;  //窗口变量
+  30          uchar wd_update=1;  //窗口整屏更新显示标志，本节最核心的变量 
+  31          
+  32          bit part_1_2_update = 1;
+  33          bit part_1_3_update = 1;
+  34          bit part_2_2_update = 1;
+  35          bit part_3_2_update = 1;
+  36          bit part_4_2_update = 1;
+  37          bit add_user = 0;
+  38          bit add_admin = 0;
+  39          bit identity_admin = 1;
+  40          bit identity_user  = 0;
+  41          bit delte_model    = 0;
+  42          bit delte_allmodel = 0;
+  43          uchar submemu_num  = 1;
+  44          
+  45          uint t = 0;
+  46          int user_num = 1;
+  47          uint  uiVoiceCnt = 0;  //一些需要在不同函数之间使用的核心变量，只能用全局变量
+  48          fp xdata user_Ifo[301];
+  49          //初始化时间日期暂存数组，秒、分、时、日、月、周、年 初值为= 17年6月19日 �
+             -�1 12:58:50
+  50          uchar TimeData[7] ={20, 27, 16, 4, 7, 2, 17};
+  51          
+  52          void init_mcu();
+  53          void delay(uint xms);
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 2   
+
+  54          void init_peripheral();
+  55          
+  56          /*void MCU_Recevice_Date(unsigned char ucLength);
+  57          void MCU_Synchronize_Time();
+  58          void MCU_Communicate_PC();*/
+  59          
+  60          void T0_time();
+  61          void key_scan();
+  62          void key_service();
+  63          
+  64          void time_update();
+  65          void OLED_Display();    //OLED显示函数
+  66          void main_screen();     //主界面
+  67          void memu_screen();   //菜单界面
+  68          void ifo_screen();    //信息界面
+  69          void sub_screen();    //子菜单界面
+  70          
+  71          void main()
+  72          {
+  73   1        init_mcu();               //初始化单片机
+  74   1        delay(200);               //延时
+  75   1        init_peripheral();          //初始化外设
+  76   1        //MCU_Communicate_PC();       //单片机与计算机通信
+  77   1        //add_admin = 1;
+  78   1        while(1)
+  79   1        {
+  80   2          key_service();          //按键服务函数
+  81   2          OLED_Display();         //OLED界面显示函数
+  82   2          time_update();          //时间更新函数
+  83   2        }
+  84   1      }
+  85          
+  86          void init_mcu()
+  87          {
+  88   1          beep=1; 
+  89   1          TMOD=0x01;  
+  90   1      
+  91   1          TH0=0xf8;   
+  92   1          TL0=0x2f;
+  93   1      //  UART1_init_57600();
+  94   1          UART2_init_57600();
+  95   1      }
+  96          
+  97          void delay(uint xms)
+  98          {
+  99   1        uint i,j;
+ 100   1        for(i=0;i<xms+3;i++)
+ 101   1        {
+ 102   2          for(j=0;j<102;j++);
+ 103   2        }
+ 104   1      }
+ 105          
+ 106          void init_peripheral()
+ 107          {
+ 108   1        EA=1;     
+ 109   1        ET0=1;    
+ 110   1        TR0=1; 
+ 111   1        OLED_Init();          //初始化OLED  
+ 112   1        OLED_Clear();           //清屏
+ 113   1        //Set_DS1302_Time(DS1302_W_ADDR); //先写入时钟日历寄存器起始地址再设置时钟日历初值
+             -  
+ 114   1        Read_DS1302_Time(DS1302_R_ADDR);  //先写入时钟日历寄存器起始地址再读出时钟日历写入
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 3   
+
+             -到TimeData数组中
+ 115   1        //init_User_Ifo();
+ 116   1        //Set_User_Ifo();
+ 117   1        //add_admin = !(user_Ifo[0].isVaild);
+ 118   1      }
+ 119          void init_User_Ifo(void)
+ 120          {
+ 121   1        unsigned int i;
+ 122   1        for(i=0;i<301;i++)
+ 123   1        {
+ 124   2          user_Ifo[i].ID = 0;
+ 125   2          user_Ifo[i].isVaild = 0;
+ 126   2          user_Ifo[i].sec = 0;
+ 127   2          user_Ifo[i].min = 0;
+ 128   2          user_Ifo[i].hour = 0;
+ 129   2        }
+ 130   1      }
+ 131          void Set_User_Ifo(void)
+ 132          {
+ 133   1        unsigned int i;
+ 134   1        unsigned char* pTable;
+ 135   1        UART2_init_57600();
+ 136   1        pTable = FP_Get_ReadIndexTable(0);
+ 137   1        for(i = 0;i<256;i++)
+ 138   1        {
+ 139   2          user_Ifo[i].ID = i;
+ 140   2          user_Ifo[i].isVaild = (*(pTable + (i/8)) & (bit_num [(i%8)]));
+ 141   2        }
+ 142   1        UART2_init_57600();
+ 143   1        pTable = FP_Get_ReadIndexTable(1);
+ 144   1        for(i=256;i<301;i++)
+ 145   1        {
+ 146   2          user_Ifo[i].ID = i;
+ 147   2          user_Ifo[i].isVaild = (*(pTable + ((i/8)-32)) & (bit_num [(i%8)]));
+ 148   2        }
+ 149   1      }
+ 150          /*//单片机接收计算机的数据
+ 151          void MCU_Recevice_Date(unsigned char ucLength)
+ 152          {
+ 153            unsigned char i;
+ 154            for(i=0;i<ucLength;i++)
+ 155              UART1_MCU_RECEVICE_BUFFER[i] = UART1_Receive_Byte();
+ 156          }
+ 157          
+ 158          //单片机同步计算机时间
+ 159          void MCU_Synchronize_Time()
+ 160          {
+ 161            unsigned char i;
+ 162            for(i=0;i<7;i++)
+ 163            {
+ 164              TimeData[i] = UART1_MCU_RECEVICE_BUFFER[i+2];
+ 165            }
+ 166            UART1_Send_Byte(0x01);
+ 167            UART1_Send_Byte(0x02);
+ 168            for(i=2;i<9;i++)
+ 169            {
+ 170              UART1_Send_Byte(TimeData[i-2]);
+ 171            }
+ 172            UART1_Send_Byte(0xFF);
+ 173          }
+ 174          //单片机和计算机通信
+ 175          void MCU_Communicate_PC()
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 4   
+
+ 176          {
+ 177            MCU_Recevice_Date(10);
+ 178            if(UART1_MCU_RECEVICE_BUFFER[1] == 0x01)
+ 179            {
+ 180              IAP_CONTR = 0x60;
+ 181            }
+ 182            else if(UART1_MCU_RECEVICE_BUFFER[1] == 0x02)
+ 183            {
+ 184              MCU_Synchronize_Time();
+ 185              Set_DS1302_Time(DS1302_W_ADDR); //先写入时钟日历寄存器起始地址再设置时钟日历初值
+ 186              add_admin = 1;
+ 187            }
+ 188            else
+ 189              Read_DS1302_Time(DS1302_R_ADDR);  //先写入时钟日历寄存器起始地址再读出时钟日历写�
+             -�到TimeData数组中
+ 190          }*/
+ 191          
+ 192          //键盘扫描函数
+ 193          void key_scan()
+ 194          {
+ 195   1        //带static的局部变量
+ 196   1        static uint  uiKeyTimeCnt1=0;  
+ 197   1        static uchar ucKeyLock1=0;   
+ 198   1        static uint  uiKeyTimeCnt2=0; 
+ 199   1        static uchar ucKeyLock2=0;
+ 200   1        static uchar uiKeyTimeCnt3=0;
+ 201   1        static uchar ucKeyLock3=0;
+ 202   1        static uchar uiKeyTimeCnt4=0;
+ 203   1        static uchar ucKeyLock4=0;
+ 204   1      
+ 205   1      
+ 206   1          if(memu == 1)//IO是高电平，说明按键没有被按下，这时要及时清零一些标志位
+ 207   1          {
+ 208   2            ucKeyLock1 = 0; //按键自锁标志清零
+ 209   2              uiKeyTimeCnt1 = 0;//按键去抖动延时计数器清零，此行非常巧妙，是我实战中摸
+             -索出来的。      
+ 210   2          }
+ 211   1          else if(ucKeyLock1 == 0)//有按键按下，且是第一次被按下
+ 212   1          {
+ 213   2            uiKeyTimeCnt1 ++; //累加定时中断次数
+ 214   2            if(uiKeyTimeCnt1 > const_key_time)
+ 215   2            {
+ 216   3                uiKeyTimeCnt1 = 0; 
+ 217   3                ucKeyLock1 = 1;  //自锁按键置位,避免一直触发
+ 218   3                ucKeySec = 1;    //触发1号键
+ 219   3            }
+ 220   2          }
+ 221   1      
+ 222   1          if(ret == 1)
+ 223   1          {
+ 224   2            ucKeyLock2 = 0; 
+ 225   2              uiKeyTimeCnt2 = 0;
+ 226   2          }
+ 227   1          else if(ucKeyLock2 == 0)
+ 228   1          {
+ 229   2            uiKeyTimeCnt2 ++; 
+ 230   2            if(uiKeyTimeCnt2 > const_key_time)
+ 231   2            {
+ 232   3                uiKeyTimeCnt2 = 0;
+ 233   3                ucKeyLock2 = 1; 
+ 234   3                ucKeySec = 2;   
+ 235   3            }
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 5   
+
+ 236   2          }
+ 237   1      
+ 238   1          if(left == 1)//IO是高电平，说明按键没有被按下，这时要及时清零一些标志位
+ 239   1          {
+ 240   2            ucKeyLock3 = 0; //按键自锁标志清零
+ 241   2              uiKeyTimeCnt3 = 0;//按键去抖动延时计数器清零，此行非常巧妙，是我实战中摸
+             -索出来的。      
+ 242   2          }
+ 243   1          else if(ucKeyLock3 == 0)//有按键按下，且是第一次被按下
+ 244   1          {
+ 245   2            uiKeyTimeCnt3 ++; //累加定时中断次数
+ 246   2            if(uiKeyTimeCnt3 > const_key_time)
+ 247   2            {
+ 248   3                uiKeyTimeCnt3 = 0; 
+ 249   3                ucKeyLock3 = 1;  //自锁按键置位,避免一直触发
+ 250   3                ucKeySec = 3;    //触发3号键
+ 251   3            }
+ 252   2          }   
+ 253   1      
+ 254   1          if(right == 1)//IO是高电平，说明按键没有被按下，这时要及时清零一些标志位
+ 255   1          {
+ 256   2            ucKeyLock4 = 0; //按键自锁标志清零
+ 257   2              uiKeyTimeCnt4 = 0;//按键去抖动延时计数器清零，此行非常巧妙，是我实战中摸
+             -索出来的。      
+ 258   2          }
+ 259   1          else if(ucKeyLock4 == 0)//有按键按下，且是第一次被按下
+ 260   1          {
+ 261   2            uiKeyTimeCnt4 ++; //累加定时中断次数
+ 262   2            if(uiKeyTimeCnt4 > const_key_time)
+ 263   2            {
+ 264   3                uiKeyTimeCnt4 = 0; 
+ 265   3                ucKeyLock4 = 1;  //自锁按键置位,避免一直触发
+ 266   3                ucKeySec = 4;    //触发4号键
+ 267   3            }
+ 268   2          }
+ 269   1      }
+ 270          
+ 271          void key_service()
+ 272          {
+ 273   1        switch(ucKeySec) 
+ 274   1          {
+ 275   2            //当memu键被按下
+ 276   2            case 1:
+ 277   2                switch(WindowSec)
+ 278   2                {
+ 279   3                    //在主菜单窗口下
+ 280   3                    case 1:
+ 281   3                         WindowSec = 2;     //进入菜单窗口
+ 282   3                         wd_update = 1;     //切换窗口需要整屏更新
+ 283   3                         part_2_2_update = 1; //菜单窗口第二行更新
+ 284   3                         break;
+ 285   3                    //在菜单窗口下
+ 286   3                    case 2:
+ 287   3                     if(identity_admin && submemu_num < 4)
+ 288   3                     {
+ 289   4                      WindowSec = 5;      //弹出对话框
+ 290   4                      wd_update = 1;
+ 291   4                     }
+ 292   3                     else
+ 293   3                     {
+ 294   4                      WindowSec = 3;
+ 295   4                      wd_update = 1;
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 6   
+
+ 296   4                      part_3_2_update = 1;
+ 297   4                     }
+ 298   3                     if(submemu_num == 4)
+ 299   3                     {
+ 300   4                      WindowSec = 5;
+ 301   4                          wd_update = 1;
+ 302   4                          identity_user = 1;
+ 303   4                     }
+ 304   3                     break;
+ 305   3                    //在子菜单窗口下
+ 306   3                    case 3:
+ 307   3                         switch(submemu_num)
+ 308   3                         {
+ 309   4                            case 1:
+ 310   4                                 WindowSec = 5;  //进入提示窗口
+ 311   4                                 wd_update = 1;
+ 312   4                                 add_user = 1;
+ 313   4                                 break;
+ 314   4                            case 2:
+ 315   4                                 WindowSec = 5;
+ 316   4                                 wd_update = 1;
+ 317   4                                 delte_model = 1;
+ 318   4                                 break;
+ 319   4                          case 3:
+ 320   4                               WindowSec = 5;
+ 321   4                               wd_update = 1;
+ 322   4                               delte_allmodel = 1;
+ 323   4                               break;
+ 324   4                          case 4:
+ 325   4                               WindowSec = 5;
+ 326   4                               wd_update = 1;
+ 327   4                               identity_user = 1;
+ 328   4                               break;
+ 329   4                         }
+ 330   3                           break;
+ 331   3                      //在信息提示窗口下
+ 332   3                      case 4:
+ 333   3                           WindowSec = 1;  //返回主界面窗口
+ 334   3                           wd_update = 1;  
+ 335   3                           break;
+ 336   3                case 5:
+ 337   3                     WindowSec = 2;
+ 338   3                     wd_update = 1;
+ 339   3                     part_2_2_update = 1;
+ 340   3                     break;
+ 341   3                } 
+ 342   2                  uiVoiceCnt=const_voice_short; 
+ 343   2                  ucKeySec=0; 
+ 344   2                  break;
+ 345   2            //当ret键被按下        
+ 346   2            case 2:
+ 347   2                switch(WindowSec)
+ 348   2                {
+ 349   3                  //在主窗口下
+ 350   3                  case 1:
+ 351   3                       WindowSec = 4;  //进入信息窗口
+ 352   3                       wd_update = 1;
+ 353   3                       part_4_2_update = 1;
+ 354   3                       break;
+ 355   3                  //在菜单窗口下
+ 356   3                  case 2:
+ 357   3                         WindowSec = 1;  //返回主菜单窗口
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 7   
+
+ 358   3                         wd_update = 1;
+ 359   3                         submemu_num = 1;
+ 360   3                         break;
+ 361   3                  //在子菜单窗口下
+ 362   3                  case 3:
+ 363   3                       WindowSec = 2;  //返回菜单窗口
+ 364   3                       wd_update = 1;
+ 365   3                       user_num = 1;
+ 366   3                       identity_admin = 1;
+ 367   3                       identity_user = 0;
+ 368   3                       part_2_2_update = 1;
+ 369   3                       break;
+ 370   3                case 5:
+ 371   3                    WindowSec = 2;
+ 372   3                    wd_update = 1;
+ 373   3                    user_num = 1;
+ 374   3                    identity_user = 0;
+ 375   3                    part_2_2_update = 1;
+ 376   3                  break;
+ 377   3                }       
+ 378   2                  uiVoiceCnt=const_voice_short;
+ 379   2                  ucKeySec=0;
+ 380   2                  break;
+ 381   2            //当left键被按下时
+ 382   2            case 3:
+ 383   2                switch(WindowSec)
+ 384   2                {
+ 385   3                    case 1:add_admin = 1;
+ 386   3                         break;
+ 387   3                    //在菜单窗口下
+ 388   3                    case 2:
+ 389   3                          submemu_num --;       //菜单编号自减
+ 390   3                        if(submemu_num == 0)  //菜单编号减到0时自动跳回最后一个菜单
+ 391   3                        {
+ 392   4                            submemu_num = 5;
+ 393   4                        }
+ 394   3                        part_2_2_update = 1;  //菜单窗口第二行更新
+ 395   3                        break;
+ 396   3                    //在子菜单窗口下
+ 397   3                    case 3:
+ 398   3                         switch(submemu_num)
+ 399   3                         {
+ 400   4                           case 1:
+ 401   4                           case 2:
+ 402   4                          user_num --;
+ 403   4                                if(user_num == 0)
+ 404   4                                {
+ 405   5                                    user_num = 300;
+ 406   5                                }
+ 407   4                                part_3_2_update = 1;
+ 408   4                                break;
+ 409   4                           case 5:
+ 410   4                                user_num -= 2;
+ 411   4                                if(user_num == -1)
+ 412   4                                {
+ 413   5                                    user_num = 299;
+ 414   5                                }
+ 415   4                                part_3_2_update = 1;
+ 416   4                                break;                    
+ 417   4                         }
+ 418   3                         break;
+ 419   3                }
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 8   
+
+ 420   2                  uiVoiceCnt=const_voice_short;
+ 421   2                  ucKeySec=0;
+ 422   2                break;
+ 423   2            //当right键被按下时
+ 424   2            case 4:
+ 425   2                switch(WindowSec)
+ 426   2                {
+ 427   3                    //在菜单窗口下
+ 428   3                    case 2:
+ 429   3                    submemu_num ++;
+ 430   3                    if(submemu_num == 6)
+ 431   3                    {
+ 432   4                      submemu_num = 1;
+ 433   4                    }
+ 434   3                    part_2_2_update = 1;
+ 435   3                    break;
+ 436   3                      case 3:
+ 437   3                            switch(submemu_num)
+ 438   3                         {
+ 439   4                           case 1:
+ 440   4                           case 2:
+ 441   4                          user_num ++;
+ 442   4                              if (user_num == 301)
+ 443   4                              {
+ 444   5                                  user_num = 1;
+ 445   5                              }
+ 446   4                              part_3_2_update = 1;
+ 447   4                              break;  
+ 448   4                           case 5:
+ 449   4                              user_num += 2;
+ 450   4                              if (user_num == 301)
+ 451   4                              {
+ 452   5                                  user_num = 1;
+ 453   5                              }
+ 454   4                              part_3_2_update = 1;
+ 455   4                              break;                  
+ 456   4                         }
+ 457   3                         break;
+ 458   3                    } 
+ 459   2                  uiVoiceCnt=const_voice_short;
+ 460   2              ucKeySec=0;
+ 461   2              break;
+ 462   2          }
+ 463   1      }
+ 464          
+ 465          void time_update()
+ 466          {
+ 467   1        t ++;
+ 468   1        if(t==120*500)
+ 469   1        {
+ 470   2          Read_DS1302_Time(DS1302_R_ADDR); //先写入时钟日历寄存器起始地址再读出时钟日历写入
+             -到TimeData数组中
+ 471   2          part_1_2_update = 1;
+ 472   2          if(TimeData[0]==00 && TimeData[2] == 0)
+ 473   2          {
+ 474   3            part_1_3_update = 1;
+ 475   3          }
+ 476   2        }
+ 477   1        
+ 478   1      }
+ 479          void T0_time() interrupt 1
+ 480          {
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 9   
+
+ 481   1        TF0 = 0; 
+ 482   1        TR0 = 0;
+ 483   1      
+ 484   1        key_scan(); 
+ 485   1      
+ 486   1        if(uiVoiceCnt!=0)
+ 487   1        {
+ 488   2           uiVoiceCnt--; 
+ 489   2           beep = 0;  
+ 490   2        }
+ 491   1        else
+ 492   1        {
+ 493   2           beep = 1; 
+ 494   2        }
+ 495   1        if(uiWrongCnt != 0)
+ 496   1        {
+ 497   2          uiWrongCnt --;
+ 498   2          red = 0;
+ 499   2        }
+ 500   1        else
+ 501   1        {
+ 502   2          red = 1;
+ 503   2        }
+ 504   1        if(uiPassCnt != 0)
+ 505   1        {
+ 506   2          uiPassCnt --;
+ 507   2          green = 0;
+ 508   2        }
+ 509   1        else
+ 510   1        {
+ 511   2          green = 1;
+ 512   2        }
+ 513   1        TH0 = 0xf8;   
+ 514   1        TL0 = 0x2f;
+ 515   1        TR0 = 1; 
+ 516   1      }
+ 517          
+ 518          
+ 519          void main_screen()
+ 520          {
+ 521   1        if(wd_update)
+ 522   1        {
+ 523   2          wd_update = 0;
+ 524   2          OLED_Clear();           //清屏
+ 525   2          //第一行的显示内容
+ 526   2          OLED_ShowChinese(18,0,8);//指
+ 527   2          OLED_ShowChinese(36,0,9);//纹
+ 528   2          OLED_ShowChinese(54,0,10);//考
+ 529   2          OLED_ShowChinese(72,0,11);//勤
+ 530   2          OLED_ShowChinese(90,0,12);//器
+ 531   2      
+ 532   2          //第二行的显示内容:显示时间
+ 533   2          OLED_ShowNum(25,2,TimeData[2]/10,1,16);
+ 534   2          OLED_ShowNum(33,2,TimeData[2]%10,1,16);
+ 535   2          OLED_ShowChar(40,2,':');
+ 536   2          OLED_ShowNum(49,2,TimeData[1]/10,1,16);
+ 537   2          OLED_ShowNum(57,2,TimeData[1]%10,1,16);
+ 538   2          OLED_ShowChar(64,2,':');
+ 539   2          OLED_ShowNum(73,2,TimeData[0]/10,1,16);
+ 540   2          OLED_ShowNum(81,2,TimeData[0]%10,1,16);
+ 541   2      
+ 542   2          //第三行的显示内容：显示日期和星期
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 10  
+
+ 543   2          OLED_ShowNum(10,4,TimeData[6]/10,1,8);
+ 544   2          OLED_ShowNum(19,4,TimeData[6]%10,1,8);
+ 545   2          OLED_ShowChar(28,4,'-');
+ 546   2          OLED_ShowNum(38,4,TimeData[4]/10,1,12);
+ 547   2          OLED_ShowNum(47,4,TimeData[4]%10,1,12);
+ 548   2          OLED_ShowChar(54,4,'-');
+ 549   2          OLED_ShowNum(64,4,TimeData[3]/10,1,12);
+ 550   2          OLED_ShowNum(73,4,TimeData[3]%10,1,12);
+ 551   2          OLED_ShowChinese(90,4,0);     //周
+ 552   2          OLED_ShowChinese(108,4,TimeData[5]);//星期
+ 553   2          
+ 554   2          //第四行的显示内容：显示选项
+ 555   2          OLED_ShowChinese(0,6,13); //菜
+ 556   2          OLED_ShowChinese(18,6,14);  //单
+ 557   2          OLED_ShowChinese(90,6,15);  //信
+ 558   2          OLED_ShowChinese(108,6,16); //息 
+ 559   2        }
+ 560   1        if(part_1_2_update)
+ 561   1        {
+ 562   2          part_1_2_update = 0;
+ 563   2          //第二行的显示内容:显示时间
+ 564   2          OLED_ShowNum(25,2,TimeData[2]/10,1,16);
+ 565   2          OLED_ShowNum(33,2,TimeData[2]%10,1,16);
+ 566   2          OLED_ShowChar(40,2,':');
+ 567   2          OLED_ShowNum(49,2,TimeData[1]/10,1,16);
+ 568   2          OLED_ShowNum(57,2,TimeData[1]%10,1,16);
+ 569   2          OLED_ShowChar(64,2,':');
+ 570   2          OLED_ShowNum(73,2,TimeData[0]/10,1,16);
+ 571   2          OLED_ShowNum(81,2,TimeData[0]%10,1,16);
+ 572   2        }
+ 573   1        if(part_1_3_update)
+ 574   1        {
+ 575   2          part_1_3_update = 0;
+ 576   2          //第三行的显示内容：显示日期和星期
+ 577   2          OLED_ShowNum(10,4,TimeData[6]/10,1,8);
+ 578   2          OLED_ShowNum(19,4,TimeData[6]%10,1,8);
+ 579   2          OLED_ShowChar(28,4,'-');
+ 580   2          OLED_ShowNum(38,4,TimeData[4]/10,1,12);
+ 581   2          OLED_ShowNum(47,4,TimeData[4]%10,1,12);
+ 582   2          OLED_ShowChar(54,4,'-');
+ 583   2          OLED_ShowNum(64,4,TimeData[3]/10,1,12);
+ 584   2          OLED_ShowNum(73,4,TimeData[3]%10,1,12);
+ 585   2          OLED_ShowChinese(90,4,0);     //周
+ 586   2          OLED_ShowChinese(108,4,TimeData[5]);//星期  
+ 587   2        }
+ 588   1      }
+ 589          
+ 590          void memu_screen()
+ 591          {
+ 592   1        if(wd_update)
+ 593   1        {
+ 594   2          wd_update = 0;
+ 595   2          OLED_Clear();
+ 596   2          //添(17) 加(18) 清(19) 空(20) 开(21) 始(22) 打(23) 卡(24) 查(25) 看(26) 确(27) 定(28) 返(29
+             -) 回(30) 管理员 （31，32，33）
+ 597   2          //line one
+ 598   2          OLED_ShowChinese(36,0,13);  //菜
+ 599   2          OLED_ShowChinese(72,0,14);  //单
+ 600   2      
+ 601   2      
+ 602   2          //line three
+ 603   2          OLED_ShowChinese(0,6,27); //确
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 11  
+
+ 604   2          OLED_ShowChinese(18,6,28);  //定
+ 605   2          OLED_ShowChar(50,6,'<');
+ 606   2          OLED_ShowChar(68,6,'>');
+ 607   2          OLED_ShowChinese(90,6,29);  //返
+ 608   2          OLED_ShowChinese(108,6,30); //回
+ 609   2      
+ 610   2        }
+ 611   1        if(part_2_2_update)
+ 612   1        {
+ 613   2          part_2_2_update = 0;
+ 614   2      
+ 615   2          OLED_ShowNum(8,3,submemu_num,1,8);   //显示菜单数
+ 616   2          OLED_ShowChar(16,3,'.');
+ 617   2      
+ 618   2          switch(submemu_num)
+ 619   2          {
+ 620   3            case 1: OLED_ShowChinese(25,3,17);  //添
+ 621   3                OLED_ShowChinese(43,3,18);  //加
+ 622   3                OLED_ShowChinese(61,3,8);   //指
+ 623   3                OLED_ShowChinese(79,3,9);   //纹
+ 624   3                break;
+ 625   3            case 2: OLED_ShowChinese(25,3,47);  //删
+ 626   3                OLED_ShowChinese(43,3,48);  //除
+ 627   3                OLED_ShowChinese(61,3,8);   //指
+ 628   3                OLED_ShowChinese(79,3,9);   //纹
+ 629   3                break;
+ 630   3            case 3:
+ 631   3                OLED_ShowChinese(25,3,19);  //清
+ 632   3                OLED_ShowChinese(43,3,20);  //空
+ 633   3                OLED_ShowChinese(61,3,8);   //指
+ 634   3                OLED_ShowChinese(79,3,9);   //纹
+ 635   3                break;
+ 636   3            case 4:
+ 637   3                OLED_ShowChinese(25,3,21);  //开
+ 638   3                OLED_ShowChinese(43,3,22);  //始
+ 639   3                OLED_ShowChinese(61,3,23);  //打
+ 640   3                OLED_ShowChinese(79,3,24);  //卡
+ 641   3                break;
+ 642   3              case 5:
+ 643   3                OLED_ShowChinese(25,3,25);  //查
+ 644   3                OLED_ShowChinese(43,3,26);  //看
+ 645   3                OLED_ShowChinese(61,3,10);  //考
+ 646   3                OLED_ShowChinese(79,3,11);  //勤
+ 647   3                break;
+ 648   3          }
+ 649   2        } 
+ 650   1      }
+ 651          
+ 652          void ifo_screen()
+ 653          {
+ 654   1        if(wd_update)
+ 655   1        {
+ 656   2          wd_update = 0;
+ 657   2          OLED_Clear();
+ 658   2          //广(34) 东(35) 工(36) 业(37) 大(38) 学(39)
+ 659   2          //line one
+ 660   2          OLED_ShowChinese(9,0,34);//广
+ 661   2          OLED_ShowChinese(27,0,35);//东
+ 662   2          OLED_ShowChinese(45,0,36);//工
+ 663   2          OLED_ShowChinese(63,0,37);//业
+ 664   2          OLED_ShowChinese(81,0,38);//大
+ 665   2          OLED_ShowChinese(99,0,39);//学
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 12  
+
+ 666   2      
+ 667   2          //吴(40) 荣(41) 杨(42) 森(43) 林(44) 区(45) 晓(46)
+ 668   2          //line two
+ 669   2          OLED_ShowChinese(18,3,40);//吴
+ 670   2          OLED_ShowChinese(54,3,41);//荣
+ 671   2          OLED_ShowChinese(90,3,35);//东
+ 672   2      
+ 673   2          delay(10000);
+ 674   2          OLED_ShowChinese(18,3,42);//杨
+ 675   2          OLED_ShowChinese(54,3,43);//森
+ 676   2          OLED_ShowChinese(90,3,44);//林
+ 677   2      
+ 678   2          delay(10000);
+ 679   2          OLED_ShowChinese(18,3,45);//区
+ 680   2          OLED_ShowChinese(54,3,46);//晓
+ 681   2          OLED_ShowChinese(90,3,35);//东
+ 682   2          delay(10000);
+ 683   2          OLED_ShowChinese(18,3,76);//制
+ 684   2          OLED_ShowChinese(54,3,79);//space
+ 685   2          OLED_ShowChinese(90,3,77);//作
+ 686   2          delay(10000);
+ 687   2          OLED_ShowChinese(18,3,8);//指
+ 688   2          OLED_ShowChinese(36,3,9);//纹
+ 689   2          OLED_ShowChinese(54,3,74);//数
+ 690   2          OLED_ShowChinese(72,3,75);//量
+ 691   2          OLED_ShowChinese(90,3,79);//space
+ 692   2          UART2_init_57600();
+ 693   2          //OLED_ShowNum(90,3,FP_Get_Templete_Num(),3,16);
+ 694   2          //line three
+ 695   2          OLED_ShowChinese(0,6,27); //确
+ 696   2          OLED_ShowChinese(18,6,28);  //定   
+ 697   2        }
+ 698   1      
+ 699   1      }
+ 700          
+ 701          //子菜单界面
+ 702          void sub_screen()
+ 703          {
+ 704   1        if(wd_update)
+ 705   1        {
+ 706   2          wd_update = 0;
+ 707   2          OLED_Clear();
+ 708   2          switch(submemu_num)
+ 709   2          {
+ 710   3            case 1:
+ 711   3                //line one 菜单名
+ 712   3                OLED_ShowChinese(27,0,17);//添
+ 713   3                OLED_ShowChinese(45,0,18);//加
+ 714   3                OLED_ShowChinese(63,0,8);//指
+ 715   3                OLED_ShowChinese(81,0,9);//纹
+ 716   3                break;
+ 717   3            case 2:
+ 718   3                OLED_ShowChinese(27,0,47);//删
+ 719   3                OLED_ShowChinese(45,0,48);//除
+ 720   3                OLED_ShowChinese(63,0,8);//指
+ 721   3                OLED_ShowChinese(81,0,9);//纹
+ 722   3                break;
+ 723   3            case 3:
+ 724   3                OLED_ShowChinese(25,0,19);  //清
+ 725   3                OLED_ShowChinese(43,0,20);  //空
+ 726   3                OLED_ShowChinese(63,0,8);   //指
+ 727   3                OLED_ShowChinese(79,0,9);   //纹
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 13  
+
+ 728   3                break;          
+ 729   3            case 4:
+ 730   3                OLED_ShowChinese(27,0,21);//开
+ 731   3                OLED_ShowChinese(45,0,22);//始
+ 732   3                OLED_ShowChinese(63,0,23);//打
+ 733   3                OLED_ShowChinese(81,0,24);//卡
+ 734   3                break;
+ 735   3            case 5:
+ 736   3                OLED_ShowChinese(27,0,25);//查
+ 737   3                OLED_ShowChinese(45,0,26);//看
+ 738   3                OLED_ShowChinese(63,0,10);//考
+ 739   3                OLED_ShowChinese(81,0,11);//勤 
+ 740   3                break;        
+ 741   3          }
+ 742   2        }
+ 743   1      
+ 744   1        //line two 信息查看
+ 745   1        if(part_3_2_update)
+ 746   1        {
+ 747   2          part_3_2_update = 0;
+ 748   2      
+ 749   2          switch(submemu_num)
+ 750   2          {
+ 751   3            //在添加指纹子菜单界面下
+ 752   3            case 1:
+ 753   3                OLED_ShowNum(27,3,user_num/100,1,8);
+ 754   3                OLED_ShowNum(36,3,(user_num/10)%10,1,8);
+ 755   3                OLED_ShowNum(45,3,user_num%100,1,8);
+ 756   3                if(user_Ifo[user_num].isVaild)
+ 757   3                  OLED_ShowChinese(63,3,73);   //已
+ 758   3                else
+ 759   3                  OLED_ShowChinese(63,3,78);   //未
+ 760   3                OLED_ShowChinese(81,3,60);   //录
+ 761   3                OLED_ShowChinese(99,3,61);   //入
+ 762   3      
+ 763   3                OLED_ShowChinese(0,6,27); //确
+ 764   3                OLED_ShowChinese(18,6,28);  //定
+ 765   3                OLED_ShowChar(50,6,'<');
+ 766   3                OLED_ShowChar(68,6,'>');
+ 767   3                OLED_ShowChinese(90,6,29);  //取
+ 768   3                OLED_ShowChinese(108,6,30); //消
+ 769   3                break;
+ 770   3            //在删除指纹子菜单界面下
+ 771   3            case 2:
+ 772   3                OLED_ShowNum(27,3,user_num/100,1,8);
+ 773   3                OLED_ShowNum(36,3,(user_num/10)%10,1,8);
+ 774   3                OLED_ShowNum(45,3,user_num%100,1,8);
+ 775   3                //if(user_Ifo[user_num].isVaild)
+ 776   3                  //OLED_ShowChinese(63,3,73);   //已
+ 777   3                //else
+ 778   3                  OLED_ShowChinese(63,3,78);   //未
+ 779   3                OLED_ShowChinese(81,3,60);   //录
+ 780   3                OLED_ShowChinese(99,3,61);   //入
+ 781   3      
+ 782   3                OLED_ShowChinese(0,6,27); //确
+ 783   3                OLED_ShowChinese(18,6,28);  //定
+ 784   3                OLED_ShowChar(50,6,'<');
+ 785   3                OLED_ShowChar(68,6,'>');
+ 786   3                OLED_ShowChinese(90,6,29);  //返
+ 787   3                OLED_ShowChinese(108,6,30); //回
+ 788   3                break;
+ 789   3            //在清空指纹界面下
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 14  
+
+ 790   3            case 3:
+ 791   3                OLED_ShowChinese(25,3,27);  //确
+ 792   3                OLED_ShowChinese(43,3,50);  //认
+ 793   3                OLED_ShowChinese(61,3,19);  //清
+ 794   3                OLED_ShowChinese(79,3,20);  //空
+ 795   3      
+ 796   3                OLED_ShowChinese(0,6,27); //确
+ 797   3                OLED_ShowChinese(18,6,28);  //定
+ 798   3                OLED_ShowChinese(90,6,66);  //取
+ 799   3                OLED_ShowChinese(108,6,67); //消
+ 800   3                break;
+ 801   3      
+ 802   3            //在开始打卡子菜单界面下
+ 803   3            case 4:
+ 804   3                OLED_ShowChinese(90,6,68);  //退
+ 805   3                OLED_ShowChinese(108,6,69); //出
+ 806   3      
+ 807   3                //显示用户编号
+ 808   3                OLED_ShowNum(45,2,user_num/100,1,8);
+ 809   3                OLED_ShowNum(54,2,(user_num/10)%10,1,8);
+ 810   3                OLED_ShowNum(63,2,user_num%100,1,8);
+ 811   3                //显示打卡时间
+ 812   3                OLED_ShowNum(25,4,TimeData[2]/10,1,16);
+ 813   3                OLED_ShowNum(33,4,TimeData[2]%10,1,16);
+ 814   3                OLED_ShowChar(40,4,':');
+ 815   3                OLED_ShowNum(49,4,TimeData[1]/10,1,16);
+ 816   3                OLED_ShowNum(57,4,TimeData[1]%10,1,16);
+ 817   3                OLED_ShowChar(64,4,':');
+ 818   3                OLED_ShowNum(73,4,TimeData[0]/10,1,16);
+ 819   3                OLED_ShowNum(81,4,TimeData[0]%10,1,16);
+ 820   3                delay(15000);
+ 821   3                WindowSec = 5;
+ 822   3                wd_update = 1;
+ 823   3                break;
+ 824   3            //在查看考勤子菜单界面下
+ 825   3            case 5:
+ 826   3                OLED_ShowNum(0,2,(user_num)/100,1,8);
+ 827   3                OLED_ShowNum(9,2,((user_num)/10)%10,1,8);
+ 828   3                OLED_ShowNum(18,2,(user_num)%100,1,8);
+ 829   3                
+ 830   3                OLED_ShowNum(36,2,TimeData[2]/10,1,16);
+ 831   3                OLED_ShowNum(45,2,TimeData[2]%10,1,16);
+ 832   3                OLED_ShowChar(54,2,':');
+ 833   3                OLED_ShowNum(63,2,TimeData[1]/10,1,16);
+ 834   3                OLED_ShowNum(72,2,TimeData[1]%10,1,16);
+ 835   3                OLED_ShowChar(81,2,':');
+ 836   3                OLED_ShowNum(90,2,TimeData[0]/10,1,16);
+ 837   3                OLED_ShowNum(99,2,TimeData[0]%10,1,16);
+ 838   3            
+ 839   3                //显示打卡时间
+ 840   3                //OLED_ShowNum(36,2,user_Ifo[user_num].hour/10,1,16);
+ 841   3                //OLED_ShowNum(45,2,user_Ifo[user_num].hour%10,1,16);
+ 842   3                //OLED_ShowChar(54,2,':');
+ 843   3                //OLED_ShowNum(63,2,user_Ifo[user_num].min/10,1,16);
+ 844   3                //OLED_ShowNum(72,2,user_Ifo[user_num].min%10,1,16);
+ 845   3                //OLED_ShowChar(81,2,':');
+ 846   3                //OLED_ShowNum(90,2,user_Ifo[user_num].sec/10,1,16);
+ 847   3                //LED_ShowNum(99,2,user_Ifo[user_num].sec%10,1,16);
+ 848   3      
+ 849   3                OLED_ShowNum(0,4,(user_num+1)/100,1,8);
+ 850   3                OLED_ShowNum(9,4,((user_num+1)/10)%10,1,8);
+ 851   3                OLED_ShowNum(18,4,(user_num+1)%100,1,8);
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 15  
+
+ 852   3      
+ 853   3                //显示打卡时间
+ 854   3                OLED_ShowNum(36,4,TimeData[2]/10,1,16);
+ 855   3                OLED_ShowNum(45,4,TimeData[2]%10,1,16);
+ 856   3                OLED_ShowChar(54,4,':');
+ 857   3                OLED_ShowNum(63,4,TimeData[1]/10,1,16);
+ 858   3                OLED_ShowNum(72,4,TimeData[1]%10,1,16);
+ 859   3                OLED_ShowChar(81,4,':');
+ 860   3                OLED_ShowNum(90,4,TimeData[0]/10,1,16);
+ 861   3                OLED_ShowNum(99,4,TimeData[0]%10,1,16);
+ 862   3      
+ 863   3                //显示打卡时间
+ 864   3                //OLED_ShowNum(36,4,user_Ifo[user_num+1].hour/10,1,16);
+ 865   3                //OLED_ShowNum(45,4,user_Ifo[user_num+1].hour%10,1,16);
+ 866   3                //OLED_ShowChar(54,4,':');
+ 867   3                //OLED_ShowNum(63,4,user_Ifo[user_num+1].min/10,1,16);
+ 868   3                //OLED_ShowNum(72,4,user_Ifo[user_num+1].min%10,1,16);
+ 869   3                //OLED_ShowChar(81,4,':');
+ 870   3                ////OLED_ShowNum(90,4,user_Ifo[user_num+1].sec/10,1,16);
+ 871   3                //OLED_ShowNum(99,4,user_Ifo[user_num+1].sec%10,1,16);
+ 872   3                
+ 873   3                OLED_ShowChinese(0,6,64); //上
+ 874   3                OLED_ShowChinese(18,6,65);  //传
+ 875   3                OLED_ShowChar(50,6,'<');
+ 876   3                OLED_ShowChar(68,6,'>');
+ 877   3                OLED_ShowChinese(90,6,68);  //退
+ 878   3                OLED_ShowChinese(108,6,69); //出
+ 879   3      
+ 880   3                break;
+ 881   3          }
+ 882   2        }
+ 883   1      
+ 884   1      }
+ 885          void dialog_screen()
+ 886          {
+ 887   1        if(wd_update)
+ 888   1        {
+ 889   2          wd_update = 0;
+ 890   2          OLED_Clear();
+ 891   2          switch(submemu_num)
+ 892   2          {
+ 893   3            case 1:
+ 894   3            case 2:
+ 895   3            case 3:
+ 896   3                if(add_admin)
+ 897   3                {
+ 898   4                  OLED_ShowChinese(9,0,49); //请
+ 899   4                  OLED_ShowChinese(27,0,17);//添
+ 900   4                  OLED_ShowChinese(45,0,18);//加
+ 901   4                  OLED_ShowChinese(63,0,31);//管
+ 902   4                  OLED_ShowChinese(81,0,32);//理
+ 903   4                  OLED_ShowChinese(99,0,33);//员
+ 904   4      
+ 905   4                  UART2_init_57600();
+ 906   4                  //FP_add_new_user(0);
+ 907   4                  delay(10000);
+ 908   4                  //Set_User_Ifo();
+ 909   4                  OLED_ShowChinese(25,3,60);  //录
+ 910   4                  OLED_ShowChinese(43,3,61);  //入
+ 911   4                  OLED_ShowChinese(61,3,63);  //成
+ 912   4                  OLED_ShowChinese(79,3,72);  //功
+ 913   4                  uiPassCnt = const_led_long;
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 16  
+
+ 914   4                  
+ 915   4                  OLED_ShowChinese(0,6,27); //确
+ 916   4                  OLED_ShowChinese(18,6,28);  //定
+ 917   4                  OLED_ShowChinese(90,6,29);  //返
+ 918   4                  OLED_ShowChinese(108,6,30); //回
+ 919   4                  add_admin = 0;
+ 920   4                  break;
+ 921   4                }
+ 922   3                if(identity_admin)
+ 923   3                {
+ 924   4                  OLED_ShowChinese(9,0,49); //请
+ 925   4                  OLED_ShowChinese(27,0,31);//管
+ 926   4                  OLED_ShowChinese(45,0,32);//理
+ 927   4                  OLED_ShowChinese(63,0,33);//员
+ 928   4                  OLED_ShowChinese(81,0,27);//确
+ 929   4                  OLED_ShowChinese(99,0,50);//认
+ 930   4      
+ 931   4                  OLED_ShowChar(43,3,'.');  
+ 932   4                  OLED_ShowChar(52,3,'.');   
+ 933   4                  OLED_ShowChar(61,3,'.');
+ 934   4                  UART2_init_57600();
+ 935   4                  delay(10000);
+ 936   4                  if(1)//FP_Admin_Identity())
+ 937   4                  {
+ 938   5                    OLED_ShowChinese(43,3,63);  //成
+ 939   5                    OLED_ShowChinese(61,3,72);  //功
+ 940   5                    uiPassCnt = const_led_long;
+ 941   5                    WindowSec = 3;
+ 942   5                    wd_update = 1;
+ 943   5                    part_3_2_update = 1;
+ 944   5                    identity_admin = 0;
+ 945   5                  }
+ 946   4                  else
+ 947   4                  {
+ 948   5                    OLED_ShowChinese(43,3,70);  //失
+ 949   5                    OLED_ShowChinese(61,3,71);  //败
+ 950   5                    uiWrongCnt = const_led_long;
+ 951   5                    uiVoiceCnt = const_voice_short;
+ 952   5                    while(uiVoiceCnt == 0 && uiWrongCnt == 0);
+ 953   5                    WindowSec = 2;
+ 954   5                    wd_update = 2;
+ 955   5                    part_2_2_update = 1;
+ 956   5                  }
+ 957   4      
+ 958   4                  break;
+ 959   4                }
+ 960   3                if(add_user)
+ 961   3                {
+ 962   4                  OLED_ShowChinese(9,0,49); //请
+ 963   4                  OLED_ShowChinese(27,0,51);//触
+ 964   4                  OLED_ShowChinese(45,0,52);//摸
+ 965   4                  OLED_ShowChinese(63,0,53);//传
+ 966   4                  OLED_ShowChinese(81,0,54);//感
+ 967   4                  OLED_ShowChinese(99,0,55);//器
+ 968   4      
+ 969   4                  UART2_init_57600();
+ 970   4                  delay(10000);
+ 971   4                  //FP_add_new_user(user_num);
+ 972   4      
+ 973   4                  //Set_User_Ifo();
+ 974   4                  OLED_ShowChinese(25,3,60);  //录
+ 975   4                  OLED_ShowChinese(43,3,61);  //入
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 17  
+
+ 976   4                  OLED_ShowChinese(61,3,63);  //成
+ 977   4                  OLED_ShowChinese(79,3,72);  //功
+ 978   4                  
+ 979   4                  OLED_ShowChinese(0,6,27); //确
+ 980   4                  OLED_ShowChinese(18,6,28);  //定
+ 981   4                  OLED_ShowChinese(90,6,29);  //返
+ 982   4                  OLED_ShowChinese(108,6,30); //回
+ 983   4                  WindowSec = 3;
+ 984   4                  wd_update = 1;
+ 985   4                  part_3_2_update = 1;
+ 986   4                  add_user = 0;
+ 987   4                  break;
+ 988   4                }
+ 989   3                if(delte_model)
+ 990   3                {
+ 991   4                  UART2_init_57600();
+ 992   4                  FP_Cmd_Delete_Model(user_num);
+ 993   4                  Set_User_Ifo();
+ 994   4                  OLED_ShowChinese(45,0,73);//已
+ 995   4                  OLED_ShowChinese(63,0,47);//删
+ 996   4                  OLED_ShowChinese(81,0,48);//除
+ 997   4                  OLED_ShowNum(50,3,user_num/100,1,8);
+ 998   4                  OLED_ShowNum(59,3,(user_num/10)%10,1,8);
+ 999   4                  OLED_ShowNum(68,3,user_num%100,1,8);
+1000   4                  delay(10000);
+1001   4                  WindowSec = 3;
+1002   4                  wd_update = 1;
+1003   4                  part_3_2_update = 1;
+1004   4                  delte_model = 0;
+1005   4                  break;
+1006   4                }
+1007   3                if(delte_allmodel)
+1008   3                {
+1009   4                  OLED_ShowChinese(25,0,19);  //清
+1010   4                  OLED_ShowChinese(43,0,20);  //空
+1011   4                  OLED_ShowChinese(61,0,8);   //指
+1012   4                  OLED_ShowChinese(79,0,9);   //纹
+1013   4      
+1014   4                  UART2_init_57600();
+1015   4                  //FP_Cmd_Delete_All_Model();
+1016   4                  //Set_User_Ifo();
+1017   4                  delay(10000);
+1018   4                  OLED_ShowChinese(43,3,73);  //已
+1019   4                  OLED_ShowChinese(61,3,19);  //清
+1020   4                  OLED_ShowChinese(79,3,20);  //空
+1021   4                  
+1022   4                  OLED_ShowChinese(0,6,27); //确
+1023   4                  OLED_ShowChinese(18,6,28);  //定
+1024   4                  OLED_ShowChinese(90,6,29);  //返
+1025   4                  OLED_ShowChinese(108,6,30); //回
+1026   4                  add_admin = 1;
+1027   4                  delte_allmodel = 0;
+1028   4                  break;
+1029   4                }
+1030   3            case 4:   
+1031   3                if(identity_user)
+1032   3                {
+1033   4                  int cnt = 0;
+1034   4                  unsigned int num = 0;
+1035   4                  OLED_ShowChinese(9,3,49); //请
+1036   4                  OLED_ShowChinese(27,3,51);//触
+1037   4                  OLED_ShowChinese(45,3,52);//摸
+C51 COMPILER V9.56.0.0   MAIN                                                              07/04/2017 16:27:30 PAGE 18  
+
+1038   4                  OLED_ShowChinese(63,3,53);//传
+1039   4                  OLED_ShowChinese(81,3,54);//感
+1040   4                  OLED_ShowChinese(99,3,55);//器
+1041   4                  OLED_ShowChinese(90,6,68);  //退
+1042   4                  OLED_ShowChinese(108,6,69); //出
+1043   4                  do{
+1044   5                    time_update();
+1045   5                    if(touch == 0)
+1046   5                    {
+1047   6                      UART2_init_57600();
+1048   6                      num = FP_User_Identity();
+1049   6                    }
+1050   5                    key_scan();
+1051   5                    if(ucKeySec == 2)
+1052   5                    {
+1053   6                      ucKeySec = 0;
+1054   6                      num = 0;
+1055   6                      WindowSec = 1;
+1056   6                      wd_update = 1;
+1057   6                      break;
+1058   6                    }
+1059   5                  }while(num == 0 || num ==-1);
+1060   4                  if(num != 0)
+1061   4                  {
+1062   5                    user_num = num;
+1063   5                    user_Ifo[user_num].sec = TimeData[0];
+1064   5                    user_Ifo[user_num].min = TimeData[1];
+1065   5                    user_Ifo[user_num].hour = TimeData[2];
+1066   5                    uiPassCnt = const_led_long;
+1067   5                    WindowSec = 3;
+1068   5                    wd_update = 1;
+1069   5                    part_3_2_update = 1;
+1070   5                  }
+1071   4                }
+1072   3          }
+1073   2        }
+1074   1      }
+1075          void OLED_Display()
+1076          {
+1077   1        switch(WindowSec)
+1078   1        {
+1079   2          case 1:main_screen();break;
+1080   2          case 2:memu_screen();break;
+1081   2          case 3:sub_screen();break;
+1082   2          case 4:ifo_screen();break;
+1083   2          case 5:dialog_screen();break;
+1084   2        }
+1085   1      }
+*** WARNING C294 IN LINE 948 OF main.c: unreachable code
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   3857    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   1806    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     37       6
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =     11    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  1 WARNING(S),  0 ERROR(S)

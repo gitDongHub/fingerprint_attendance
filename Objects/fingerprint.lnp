@@ -1,0 +1,7 @@
+".\Objects\main.obj",
+".\Objects\oled.obj",
+".\Objects\ds1302.obj",
+".\Objects\fp_diver.obj",
+".\Objects\uart.obj" 
+TO ".\Objects\fingerprint" 
+PRINT(".\Listings\fingerprint.m51") RAMSIZE(256) 
